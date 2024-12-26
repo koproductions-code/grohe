@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grohe"
+version = "0.1.0"
+description = "A python package to interact with the Grohe API."
+authors = [
+    {name = "Konstantin Weber", email = "konstantin@koproductions.dev"},
+    {name = "Flo Schilli", email = "github.contact@flo.schilli.dev"}
+]
+license = "MIT"
+dependencies = [
+    "bs4==0.0.2",
+    "httpx>=0.27.0",
+]
+python-requires = ">=3.6"
