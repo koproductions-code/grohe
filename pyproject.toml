@@ -10,9 +10,8 @@ authors = [
     {name = "Konstantin Weber", email = "konstantin@koproductions.dev"},
     {name = "Flo Schilli", email = "github.contact@flo.schilli.dev"}
 ]
-license = "MIT"
+license = {file = "LICENSE"}
 dependencies = [
     "bs4==0.0.2",
     "httpx>=0.27.0",
 ]
-python-requires = ">=3.6"
