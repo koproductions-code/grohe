@@ -2,13 +2,15 @@ import httpx
 import urllib.parse
 from bs4 import BeautifulSoup
 
+from grohe.dto.grohe_dto import GroheTokensDTO
+
 AUTH_BASE_URL = "https://idp2-apigw.cloud.grohe.com/v3/iot/oidc/login"
 REFRESH_TOKEN_BASE_URL = "https://idp2-apigw.cloud.grohe.com/v3/iot/oidc/refresh"
 
 
 async def get_tokens_from_credentials(
     grohe_email: str, grohe_password: str, client: httpx.AsyncClient
-) -> dict:
+) -> GroheTokensDTO:
     """
     Get the initial access and refresh tokens from the given Grohe credentials.
     Args:
@@ -55,7 +57,7 @@ async def get_tokens_from_credentials(
             response.raise_for_status()
             json_data = response.json()
 
-            tokens = get_tokens_from_json(json_data)
+            tokens = GroheTokensDTO.from_dict(json_data)
             return tokens
         else:
             raise
@@ -82,7 +84,7 @@ def get_tokens_from_json(json_data: dict) -> dict:
     return tokens
 
 
-async def get_refresh_tokens(refresh_token: str, client: httpx.AsyncClient) -> dict:
+async def get_refresh_tokens(refresh_token: str, client: httpx.AsyncClient) -> GroheTokensDTO:
     """
     Refresh the access and refresh tokens.
     Args:
@@ -95,5 +97,5 @@ async def get_refresh_tokens(refresh_token: str, client: httpx.AsyncClient) -> d
     response.raise_for_status()
     json_data = response.json()
 
-    tokens = get_tokens_from_json(json_data)
+    tokens = GroheTokensDTO.from_dict(json_data)
     return tokens
