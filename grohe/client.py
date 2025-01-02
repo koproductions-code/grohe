@@ -6,8 +6,9 @@ from datetime import datetime, timedelta
 
 import jwt
 
-from .dto.grohe_dto import GroheTokensDTO
-from .tokens import get_refresh_tokens, get_tokens_from_credentials
+from .dto.grohe_dto import GroheTokensDTO, GrohePressureMeasurementStart
+from .enum.grohe_enum import GroheTypes, GroheGroupBy
+from .tokens import GroheTokens
 
 
 class GroheClient:
@@ -24,6 +25,8 @@ class GroheClient:
         self.__access_token_expiring_date: datetime | None = None
         self.__user_id: str | None = None
         self.__httpx_client = httpx_client or httpx.AsyncClient()
+
+        self.__token_handler = GroheTokens(self.__httpx_client, self.__api_url)
 
     @property
     def user_id(self):
@@ -42,7 +45,7 @@ class GroheClient:
         Returns:
             None
         """
-        tokens = await get_refresh_tokens(self.__refresh_token, self.__httpx_client)
+        tokens = await self.__token_handler.get_refresh_tokens(self.__refresh_token)
         self.__set_tokens(tokens)
 
 
@@ -177,8 +180,8 @@ class GroheClient:
             None
         """
         try:
-            tokens = await get_tokens_from_credentials(
-                self.__email, self.__password, self.__httpx_client
+            tokens = await self.__token_handler.get_tokens_from_credentials(
+                self.__email, self.__password
             )
             self.__set_tokens(tokens)
 
@@ -271,7 +274,7 @@ class GroheClient:
 
     async def get_appliance_data_raw(self, location_id: str, room_id: str, appliance_id: str,
                                  from_date: Optional[datetime] = None, to_date: Optional[datetime] = None,
-                                 group_by: Optional[OndusGroupByTypes] = None,
+                                 group_by: Optional[GroheGroupBy] = None,
                                  date_as_full_day: Optional[bool] = None) -> Dict[str, any]:
 
         url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/data/aggregated'
@@ -300,7 +303,7 @@ class GroheClient:
 
 
     async def start_pressure_measurement(self, location_id: str, room_id: str,
-                                         appliance_id: str) -> PressureMeasurementStart | None:
+                                         appliance_id: str) -> GrohePressureMeasurementStart | None:
         """
         This method sets the command for a specific appliance. It takes the location ID, room ID, appliance ID,
         command, and value as parameters.
@@ -319,7 +322,7 @@ class GroheClient:
         response = await self.__post(url, None)
 
         if response is not None:
-            return PressureMeasurementStart.from_dict(response)
+            return GrohePressureMeasurementStart.from_dict(response)
         else:
             return None
 
