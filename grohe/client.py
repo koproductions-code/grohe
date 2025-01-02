@@ -93,7 +93,7 @@ class GroheClient:
             })
 
         if response.status_code in (200, 201):
-            return await response.json()
+            return response.json()
         else:
             logging.warning(f'URL {url} returned status code {response.status_code} for GET request')
             return None
@@ -115,7 +115,7 @@ class GroheClient:
         })
 
         if response.status_code == 201:
-            return await response.json()
+            return response.json()
 
     async def __put(self, url: str, data: Dict[str, Any] | None) -> Dict[str, Any] | None:
         """
@@ -134,7 +134,7 @@ class GroheClient:
         })
 
         if response.status_code == 201:
-            return await response.json()
+            return response.json()
         elif response.status_code == 200:
             return None
         elif response.status_code == 202:
@@ -157,7 +157,7 @@ class GroheClient:
         })
 
         if response.status_code == 201:
-            return await response.json()
+            return response.json()
         elif response.status_code == 200:
             return None
         elif response.status_code == 202:
@@ -201,7 +201,7 @@ class GroheClient:
         url = f'{self.__api_url}/dashboard'
         return await self.__get(url)
 
-    async def get_appliance_info_raw(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
+    async def get_appliance_info(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
         """
         Get information about an appliance.
 
@@ -219,7 +219,7 @@ class GroheClient:
         return await self.__get(url)
 
 
-    async def get_appliance_details_raw(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
+    async def get_appliance_details(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
         """
         Get information about an appliance without parsing it to a struct.
 
@@ -237,11 +237,11 @@ class GroheClient:
         return await self.__get(url)
 
 
-    async def get_appliance_status_raw(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
+    async def get_appliance_status(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
         url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/status'
         return await self.__get(url)
 
-    async def get_appliance_command_raw(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
+    async def get_appliance_command(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
         """
         Get possible commands for an appliance.
 
@@ -259,8 +259,8 @@ class GroheClient:
         return await self.__get(url)
 
 
-    async def get_appliance_notifications_raw(self, location_id: str, room_id: str,
-                                              appliance_id: str, limit: Optional[int] = None) -> Dict[str, any]:
+    async def get_appliance_notifications(self, location_id: str, room_id: str,
+                                          appliance_id: str, limit: Optional[int] = None) -> Dict[str, any]:
 
         url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/notifications'
 
@@ -272,7 +272,7 @@ class GroheClient:
         data = await self.__get(url, params)
         return data
 
-    async def get_appliance_data_raw(self, location_id: str, room_id: str, appliance_id: str,
+    async def get_appliance_data(self, location_id: str, room_id: str, appliance_id: str,
                                  from_date: Optional[datetime] = None, to_date: Optional[datetime] = None,
                                  group_by: Optional[GroheGroupBy] = None,
                                  date_as_full_day: Optional[bool] = None) -> Dict[str, any]:
@@ -296,7 +296,7 @@ class GroheClient:
         return await self.__get(url, params)
 
 
-    async def set_appliance_command_raw(self, location_id: str, room_id: str, appliance_id: str, device_type: GroheTypes, data: Dict[str, any]) -> Dict[str, any]:
+    async def set_appliance_command(self, location_id: str, room_id: str, appliance_id: str, device_type: GroheTypes, data: Dict[str, any]) -> Dict[str, any]:
         url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/command'
         data['type'] = device_type.value
         return await self.__post(url, data)
@@ -326,7 +326,7 @@ class GroheClient:
         else:
             return None
 
-    async def get_appliance_pressure_measurement_raw(self, location_id: str, room_id: str,
+    async def get_appliance_pressure_measurement(self, location_id: str, room_id: str,
                                                      appliance_id: str) -> Dict[str, any]:
         url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/pressuremeasurement'
         data = await self.__get(url)
@@ -344,7 +344,7 @@ class GroheClient:
         data = await self.__delete(url)
         return data
 
-    async def get_profile_notifications_raw(self, page_size: int = 50) -> Dict[str, any]:
+    async def get_profile_notifications(self, page_size: int = 50) -> Dict[str, any]:
         url = f'{self.__api_url}/profile/notifications?pageSize={page_size}'
         data = await self.__get(url)
         return data
