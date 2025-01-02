@@ -1,21 +1,169 @@
 import logging
-import asyncio
+from typing import Dict, Any, Optional
+
 import httpx
 from datetime import datetime, timedelta
 
-from .tokens import get_refresh_tokens, get_tokens_from_credentials
+import jwt
+
+from .dto.grohe_dto import GroheTokensDTO, GrohePressureMeasurementStart
+from .enum.grohe_enum import GroheTypes, GroheGroupBy
+from .tokens import GroheTokens
 
 
 class GroheClient:
     def __init__(
         self, email: str, password: str, httpx_client: httpx.AsyncClient = None
     ):
-        self.email = email
-        self.password = password
-        self.access_token = None
-        self.refresh_token = None
-        self.access_token_expiring_date = None
-        self.httpx_client = httpx_client or httpx.AsyncClient()
+        self.__base_url: str = 'https://idp2-apigw.cloud.grohe.com'
+        self.__api_url: str = self.__base_url + '/v3/iot'
+
+        self.__email: str = email
+        self.__password: str = password
+        self.__access_token: str | None = None
+        self.__refresh_token: str | None = None
+        self.__access_token_expiring_date: datetime | None = None
+        self.__user_id: str | None = None
+        self.__httpx_client = httpx_client or httpx.AsyncClient()
+
+        self.__token_handler = GroheTokens(self.__httpx_client, self.__api_url)
+
+    @property
+    def user_id(self):
+        return self.__user_id
+
+    async def __refresh_tokens(self):
+        """
+        Refreshes the access and refresh tokens.
+
+        This method asynchronously fetches new access and refresh tokens using the current refresh token.
+        It updates the instance's access token, refresh token, and the access token's expiring date.
+
+        Raises:
+            Exception: If the token refresh process fails.
+
+        Returns:
+            None
+        """
+        tokens = await self.__token_handler.get_refresh_tokens(self.__refresh_token)
+        self.__set_tokens(tokens)
+
+
+    def __set_tokens(self, tokens: GroheTokensDTO):
+        self.__access_token = tokens.access_token
+        self.__refresh_token = tokens.refresh_token
+
+        self.__access_token_expiring_date = datetime.now() + timedelta(
+            seconds=tokens.expires_in - 60
+        )
+
+        access_token_data = jwt.decode(tokens.access_token, options={'verify_signature': False})
+        self.__user_id = access_token_data['sub']
+
+    async def __get_access_token(self) -> str:
+        """
+        Retrieves the current access token. If the access token has expired,
+        it refreshes the tokens before returning the access token.
+
+        Returns:
+            str: The current access token.
+        """
+        if datetime.now() > self.__access_token_expiring_date:
+            await self.__refresh_tokens()
+        return self.__access_token
+
+
+    async def __get(self, url: str, params: Optional[dict[str, any]] = None) -> Dict[str, Any] | None:
+        """
+        Retrieve data from the specified URL using a GET request.
+
+        :param url: The URL to retrieve data from.
+        :type url: str
+        :return: A dictionary containing the retrieved data.
+        :rtype: Dict[str, Any]
+        """
+        access_token = await self.__get_access_token()
+        if params:
+            response = await self.__httpx_client.get(url=url, headers={
+                'Authorization': f'Bearer {access_token}'
+            }, params=params)
+        else:
+            response = await self.__httpx_client.get(url=url, headers={
+                'Authorization': f'Bearer {access_token}'
+            })
+
+        if response.status_code in (200, 201):
+            return response.json()
+        else:
+            logging.warning(f'URL {url} returned status code {response.status_code} for GET request')
+            return None
+
+    async def __post(self, url: str, data: Dict[str, Any] | None) -> Dict[str, Any]:
+        """
+        Send a POST request to the specified URL with the given data.
+
+        :param url: The URL to send the request to.
+        :type url: str
+        :param data: The data to include in the request body.
+        :type data: Dict[str, Any]
+        :return: A dictionary representing the response JSON.
+        :rtype: Dict[str, Any]
+        """
+        access_token = await self.__get_access_token()
+        response = await self.__httpx_client.post(url=url, json=data, headers={
+            'Authorization': f'Bearer {access_token}'
+        })
+
+        if response.status_code == 201:
+            return response.json()
+
+    async def __put(self, url: str, data: Dict[str, Any] | None) -> Dict[str, Any] | None:
+        """
+        Send a PUT request to the specified URL with the given data.
+
+        :param url: The URL to send the request to.
+        :type url: str
+        :param data: The data to include in the request body.
+        :type data: Dict[str, Any]
+        :return: A dictionary representing the response JSON.
+        :rtype: Dict[str, Any]
+        """
+        access_token = await self.__get_access_token()
+        response = await self.__httpx_client.put(url=url, json=data, headers={
+            'Authorization': f'Bearer {access_token}'
+        })
+
+        if response.status_code == 201:
+            return response.json()
+        elif response.status_code == 200:
+            return None
+        elif response.status_code == 202:
+            return None
+        else:
+            logging.warning(f'URL {url} returned status code {response.status_code} for PUT request')
+
+    async def __delete(self, url: str) -> Dict[str, Any] | None:
+        """
+        Send a DELETE request to the specified URL with the given data.
+
+        :param url: The URL to send the request to.
+        :type url: str
+        :return: A dictionary representing the response JSON.
+        :rtype: Dict[str, Any]
+        """
+        access_token = await self.__get_access_token()
+        response = await self.__httpx_client.delete(url=url, headers={
+            'Authorization': f'Bearer {access_token}'
+        })
+
+        if response.status_code == 201:
+            return response.json()
+        elif response.status_code == 200:
+            return None
+        elif response.status_code == 202:
+            return None
+        else:
+            logging.warning(f'URL {url} returned status code {response.status_code} for PUT request')
 
     async def login(self):
         """
@@ -32,51 +180,188 @@ class GroheClient:
             None
         """
         try:
-            tokens = await get_tokens_from_credentials(
-                self.email, self.password, self.httpx_client
+            tokens = await self.__token_handler.get_tokens_from_credentials(
+                self.__email, self.__password
             )
-            self.access_token = tokens["access_token"]
-            self.access_token_expiring_date = datetime.now() + timedelta(
-                seconds=tokens["access_token_expires_in"] - 60
-            )
-            self.refresh_token = tokens["refresh_token"]
+            self.__set_tokens(tokens)
+
         except Exception as e:
             logging.error(f"Could not get initial tokens: {e}")
             raise e
 
-    async def refresh_tokens(self):
+    async def get_dashboard(self) -> Dict[str, any]:
         """
-        Refreshes the access and refresh tokens.
+        Get the dashboard information.
+        These dashboard information include most of the data which can also be queried by the appliance itself
 
-        This method asynchronously fetches new access and refresh tokens using the current refresh token.
-        It updates the instance's access token, refresh token, and the access token's expiring date.
-
-        Raises:
-            Exception: If the token refresh process fails.
-
-        Returns:
-            None
+        :return: The locations information obtained from the dashboard.
+        :rtype: Dict[str, any]
         """
-        tokens = await get_refresh_tokens(self.refresh_token, self.httpx_client)
-        self.access_token = tokens["access_token"]
-        self.refresh_token = tokens["refresh_token"]
-        self.access_token_expiring_date = datetime.now() + timedelta(
-            seconds=tokens["access_token_expires_in"] - 60
-        )
+        logging.debug('Get dashboard information')
+        url = f'{self.__api_url}/dashboard'
+        return await self.__get(url)
 
-    async def get_access_token(self) -> str:
+    async def get_appliance_info(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
         """
-        Retrieves the current access token. If the access token has expired,
-        it refreshes the tokens before returning the access token.
+        Get information about an appliance.
 
-        Returns:
-            str: The current access token.
+        :param location_id: ID of the location containing the appliance.
+        :type location_id: str
+        :param room_id: ID of the room containing the appliance.
+        :type room_id: str
+        :param appliance_id: ID of the appliance to get details for.
+        :type appliance_id: str
+        :return: The information of the appliance.
+        :rtype: Dict[str, any]
         """
-        if datetime.now() > self.access_token_expiring_date:
-            await self.refresh_tokens()
-        return self.access_token
+        logging.debug('Get appliance information for appliance %s', appliance_id)
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}'
+        return await self.__get(url)
 
-    """
-    Hier hatte ich bei meinem Package die Funktionen für die API-Requests 
-    (https://github.com/koproductions-code/groheblue/blob/master/groheblue/client.py).
-    """
+
+    async def get_appliance_details(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
+        """
+        Get information about an appliance without parsing it to a struct.
+
+        :param location_id: ID of the location containing the appliance.
+        :type location_id: str
+        :param room_id: ID of the room containing the appliance.
+        :type room_id: str
+        :param appliance_id: ID of the appliance to get details for.
+        :type appliance_id: str
+        :return: The information of the appliance.
+        :rtype: Dict[str, any]
+        """
+        logging.debug('Get appliance details for appliance (type insensitive) %s', appliance_id)
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/details'
+        return await self.__get(url)
+
+
+    async def get_appliance_status(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/status'
+        return await self.__get(url)
+
+    async def get_appliance_command(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
+        """
+        Get possible commands for an appliance.
+
+        :param location_id: ID of the location containing the appliance.
+        :type location_id: str
+        :param room_id: ID of the room containing the appliance.
+        :type room_id: str
+        :param appliance_id: ID of the appliance to get details for.
+        :type appliance_id: str
+        :return: The command for the specified appliance.
+        :rtype: Dict[str, any]
+        """
+        logging.debug('Get appliance command for appliance %s', appliance_id)
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/command'
+        return await self.__get(url)
+
+
+    async def get_appliance_notifications(self, location_id: str, room_id: str,
+                                          appliance_id: str, limit: Optional[int] = None) -> Dict[str, any]:
+
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/notifications'
+
+        params = dict()
+
+        if limit is not None:
+            params.update({'pageSize': limit})
+
+        data = await self.__get(url, params)
+        return data
+
+    async def get_appliance_data(self, location_id: str, room_id: str, appliance_id: str,
+                                 from_date: Optional[datetime] = None, to_date: Optional[datetime] = None,
+                                 group_by: Optional[GroheGroupBy] = None,
+                                 date_as_full_day: Optional[bool] = None) -> Dict[str, any]:
+
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/data/aggregated'
+        params = dict()
+
+        if from_date is not None:
+            if date_as_full_day:
+                params.update({'from': from_date.date()})
+            else:
+                params.update({'from': from_date.strftime('%Y-%m-%dT%H:%M:%S%z')})
+        if to_date is not None:
+            if date_as_full_day:
+                params.update({'to': to_date.date()})
+            else:
+                params.update({'to': to_date.strftime('%Y-%m-%dT%H:%M:%S%z')})
+        if group_by is not None:
+            params.update({'groupBy': group_by.value})
+
+        return await self.__get(url, params)
+
+
+    async def set_appliance_command(self, location_id: str, room_id: str, appliance_id: str, device_type: GroheTypes, data: Dict[str, any]) -> Dict[str, any]:
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/command'
+        data['type'] = device_type.value
+        return await self.__post(url, data)
+
+
+    async def start_pressure_measurement(self, location_id: str, room_id: str,
+                                         appliance_id: str) -> GrohePressureMeasurementStart | None:
+        """
+        This method sets the command for a specific appliance. It takes the location ID, room ID, appliance ID,
+        command, and value as parameters.
+
+        :param location_id: ID of the location containing the appliance.
+        :type location_id: str
+        :param room_id: ID of the room containing the appliance.
+        :type room_id: str
+        :param appliance_id: ID of the appliance to get details for.
+        :type appliance_id: str
+        :return: None
+        """
+        logging.debug('Start pressure measurement for appliance %s',appliance_id)
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/pressuremeasurement'
+
+        response = await self.__post(url, None)
+
+        if response is not None:
+            return GrohePressureMeasurementStart.from_dict(response)
+        else:
+            return None
+
+    async def get_appliance_pressure_measurement(self, location_id: str, room_id: str,
+                                                     appliance_id: str) -> Dict[str, any]:
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/pressuremeasurement'
+        data = await self.__get(url)
+        return data
+
+    async def set_snooze(self, location_id: str, room_id: str,
+                            appliance_id: str, duration_in_min: int) -> Dict[str, any]:
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/snooze'
+        data = await self.__put(url, {'snooze_duration': duration_in_min})
+        return data
+
+    async def disable_snooze(self, location_id: str, room_id: str,
+                            appliance_id: str) -> None:
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/snooze'
+        data = await self.__delete(url)
+        return data
+
+    async def get_profile_notifications(self, page_size: int = 50) -> Dict[str, any]:
+        url = f'{self.__api_url}/profile/notifications?pageSize={page_size}'
+        data = await self.__get(url)
+        return data
+
+
+    async def update_profile_notification_state(self, notification_id: str, state: bool) -> None:
+        """
+            Get profile notifications.
+
+            :param notification_id: The unique ID of the notification to update.
+            :param state: Sets the state of the notification
+            :return: None.
+        """
+        logging.debug('Set state of notification %s to %s', notification_id, state)
+        url = f'{self.__api_url}/profile/notifications/{notification_id}'
+        data = {'is_read': state}
+        ret_val = await self.__put(url, data)
+        logging.debug(f'Notification {notification_id} updated. Return value: {ret_val}')
+
+        return None
