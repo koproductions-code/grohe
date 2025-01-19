@@ -4,8 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grohe"
-version = "0.2.0"
+version = "0.2.1"
 description = "A python package to interact with the Grohe API."
+readme = "README.md"
 authors = [
     {name = "Konstantin Weber", email = "konstantin@koproductions.dev"},
     {name = "Flo Schilli", email = "github.contact@flo.schilli.dev"}
