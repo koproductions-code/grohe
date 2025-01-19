@@ -29,6 +29,10 @@ class GroheClient:
         self.__token_handler = GroheTokens(self.__httpx_client, self.__api_url)
 
     @property
+    def access_token(self):
+        return self.__access_token
+
+    @property
     def user_id(self):
         return self.__user_id
 
