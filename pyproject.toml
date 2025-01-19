@@ -16,3 +16,7 @@ dependencies = [
     "bs4==0.0.2",
     "httpx>=0.27.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/koproductions-code/grohe"
+Documentation = "https://github.com/koproductions-code/grohe/wiki/"
