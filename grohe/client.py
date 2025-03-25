@@ -22,6 +22,7 @@ class GroheClient:
         self.__password: str = password
         self.__access_token: str | None = None
         self.__refresh_token: str | None = None
+        self.__tokens: GroheTokensDTO | None = None
         self.__access_token_expiring_date: datetime | None = None
         self.__user_id: str | None = None
         self.__httpx_client = httpx_client or httpx.AsyncClient()
@@ -54,6 +55,8 @@ class GroheClient:
 
 
     def __set_tokens(self, tokens: GroheTokensDTO):
+        self.__tokens = tokens
+
         self.__access_token = tokens.access_token
         self.__refresh_token = tokens.refresh_token
 
@@ -168,6 +171,10 @@ class GroheClient:
             return None
         else:
             logging.warning(f'URL {url} returned status code {response.status_code} for PUT request')
+
+
+    def get_tokens(self) -> GroheTokensDTO:
+            return self.__tokens
 
     async def login(self):
         """
