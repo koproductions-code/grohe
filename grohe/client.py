@@ -13,7 +13,7 @@ from .tokens import GroheTokens
 
 class GroheClient:
     def __init__(
-        self, email: str, password: str, httpx_client: httpx.AsyncClient = None
+        self, email: str, password: str, httpx_client: httpx.AsyncClient = None, access_token_refresh_before_expire: int = 60
     ):
         self.__base_url: str = 'https://idp2-apigw.cloud.grohe.com'
         self.__api_url: str = self.__base_url + '/v3/iot'
@@ -25,6 +25,7 @@ class GroheClient:
         self.__tokens: GroheTokensDTO | None = None
         self.__access_token_expiring_date: datetime | None = None
         self.__user_id: str | None = None
+        self.__access_token_refresh_before_expire: int = access_token_refresh_before_expire
         self.__httpx_client = httpx_client or httpx.AsyncClient()
 
         self.__token_handler = GroheTokens(self.__httpx_client, self.__api_url)
@@ -61,7 +62,7 @@ class GroheClient:
         self.__refresh_token = tokens.refresh_token
 
         self.__access_token_expiring_date = datetime.now() + timedelta(
-            seconds=tokens.expires_in - 60
+            seconds=tokens.expires_in - self.__access_token_refresh_before_expire
         )
 
         access_token_data = jwt.decode(tokens.access_token, options={'verify_signature': False})
