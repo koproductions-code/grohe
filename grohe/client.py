@@ -245,8 +245,29 @@ class GroheClient:
         :rtype: Dict[str, any]
         """
         logging.debug('Get appliance details for appliance (type insensitive) %s', appliance_id)
-        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}/details'
-        return await self.__get(url)
+
+        dashboard_data = await self.get_dashboard()
+        
+        # Extract specific appliance data from dashboard
+        api_data = None
+        for location in dashboard_data.get('locations', []):
+            if location['id'] == location_id:
+                for room in location.get('rooms', []):
+                    if room['id'] == room_id:
+                        for appliance in room.get('appliances', []):
+                            if appliance['appliance_id'] == appliance_id:
+                                api_data = appliance
+                                break
+                        if api_data:
+                            break
+                if api_data:
+                    break
+        
+        if api_data is None:
+            logging.error(f'Appliance with ID {appliance_id} not found in dashboard data')
+            return {}
+        
+        return api_data
 
 
     async def get_appliance_status(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
