@@ -228,7 +228,61 @@ class GroheClient:
         """
         logging.debug('Get appliance information for appliance %s', appliance_id)
         url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}'
-        return await self.__get(url)
+        data = await self.__get(url)
+
+        # The API wraps the single appliance in a list, even though the URL is already
+        # scoped to one specific appliance_id.
+        if isinstance(data, list):
+            return data[0] if data else None
+
+        return data
+
+    async def get_appliance_config(self, location_id: str, room_id: str,
+                                   appliance_id: str) -> Dict[str, Any] | None:
+        """
+        Get the current configuration of an appliance, as returned by the API.
+
+        The shape of this dict is appliance-type specific and not modeled here on purpose -
+        e.g. Sense Guard exposes thresholds/monitoring flags/sprinkler schedule, other
+        appliance types may expose a different (or no) set of fields.
+
+        :param location_id: ID of the location containing the appliance.
+        :type location_id: str
+        :param room_id: ID of the room containing the appliance.
+        :type room_id: str
+        :param appliance_id: ID of the appliance to get the config for.
+        :type appliance_id: str
+        :return: The raw appliance configuration, or None if it could not be retrieved.
+        :rtype: Dict[str, Any] | None
+        """
+        logging.debug('Get appliance config for appliance %s', appliance_id)
+        info = await self.get_appliance_info(location_id, room_id, appliance_id)
+
+        if info is None:
+            return None
+
+        return info.get('config')
+
+    async def set_appliance_config(self, location_id: str, room_id: str, appliance_id: str,
+                                   config: Dict[str, Any]) -> None:
+        """
+        Update the configuration of an appliance. `config` is sent as-is, so it can be a full
+        config dict or just the subset of keys that should change - e.g.
+        {"sprinkler_mode_active_monday": False} updates only that flag.
+
+        :param location_id: ID of the location containing the appliance.
+        :type location_id: str
+        :param room_id: ID of the room containing the appliance.
+        :type room_id: str
+        :param appliance_id: ID of the appliance to update the config for.
+        :type appliance_id: str
+        :param config: The (partial or full) configuration to apply.
+        :type config: Dict[str, Any]
+        :return: None
+        """
+        logging.debug('Set appliance config for appliance %s', appliance_id)
+        url = f'{self.__api_url}/locations/{location_id}/rooms/{room_id}/appliances/{appliance_id}'
+        await self.__put(url, {'config': config})
 
 
     async def get_appliance_details(self, location_id: str, room_id: str, appliance_id: str) -> Dict[str, any]:
