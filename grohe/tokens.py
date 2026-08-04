@@ -3,6 +3,7 @@ import urllib.parse
 from bs4 import BeautifulSoup
 
 from grohe.dto.grohe_dto import GroheTokensDTO
+from grohe.exceptions import GroheError, GroheNetworkError, GroheUnauthorizedError
 
 
 class GroheTokens:
@@ -20,14 +21,17 @@ class GroheTokens:
 
         Returns: A dict with the tokens.
         """
-        response = await self.__client.get(f'{self.__api_url}/oidc/login', follow_redirects=True)
-        response.raise_for_status()
+        try:
+            response = await self.__client.get(f'{self.__api_url}/oidc/login', follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as err:
+            raise GroheNetworkError(f'Could not load Grohe login page: {err}') from err
         html = response.text
 
         soup = BeautifulSoup(html, 'html.parser')
         form = soup.find('form')
         if not form or 'action' not in form.attrs:
-            raise Exception('Login form target URL not found')
+            raise GroheError('Login form target URL not found')
 
         action_url = urllib.parse.urljoin(f'{self.__api_url}/oidc/login', form['action'])
 
@@ -50,20 +54,27 @@ class GroheTokens:
             if exc.response.status_code == 302:
                 location = exc.response.headers.get('Location')
                 if not location:
-                    raise Exception('No redirect location found after login')
+                    raise GroheError('No redirect location found after login')
 
                 tokens_url = location.replace('ondus://', 'https://')
 
-                response = await self.__client.get(tokens_url)
-                response.raise_for_status()
-                json_data = response.json()
+                try:
+                    response = await self.__client.get(tokens_url)
+                    response.raise_for_status()
+                except httpx.HTTPError as err:
+                    raise GroheNetworkError(f'Could not fetch tokens after login: {err}') from err
 
+                json_data = response.json()
                 tokens = GroheTokensDTO.from_dict(json_data)
                 return tokens
+            elif exc.response.status_code in (401, 403):
+                raise GroheUnauthorizedError('Invalid Grohe username or password') from exc
             else:
-                raise
+                raise GroheNetworkError(f'Unexpected response during login: {exc}') from exc
+        except httpx.HTTPError as err:
+            raise GroheNetworkError(f'Could not log in to Grohe: {err}') from err
 
-        raise Exception(
+        raise GroheUnauthorizedError(
             'Invalid username/password or unexpected response from Grohe service'
         )
 
@@ -76,9 +87,16 @@ class GroheTokens:
         Returns: A dict with the new tokens.
         """
         data = {'refresh_token': refresh_token, 'grant_type': 'refresh_token'}
-        response = await self.__client.post(f'{self.__api_url}/oidc/refresh', json=data)
-        response.raise_for_status()
-        json_data = response.json()
+        try:
+            response = await self.__client.post(f'{self.__api_url}/oidc/refresh', json=data)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in (401, 403):
+                raise GroheUnauthorizedError('Grohe refresh token is no longer valid') from exc
+            raise GroheNetworkError(f'Could not refresh Grohe tokens: {exc}') from exc
+        except httpx.HTTPError as err:
+            raise GroheNetworkError(f'Could not refresh Grohe tokens: {err}') from err
 
+        json_data = response.json()
         tokens = GroheTokensDTO.from_dict(json_data)
         return tokens
